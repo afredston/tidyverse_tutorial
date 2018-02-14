@@ -117,9 +117,9 @@ pipedat <- rawdat %>%
   rename("2015" = `Last Inventory Year (2015)`) %>% 
   gather(key="year", value="emissions", -1) %>% 
   group_by(year) %>%
-  mutate(annualrank = rank(emissions)) %>% 
-  mutate(rank2015 = ) %>% ####################rank in year 2015 for that Party 
-  filter(rank2015 <= 10)
+  mutate(annualrank = rank(-emissions)) %>% #rank emissions in descending order
+  filter(year == 2015,
+         annualrank <= 10)
 ```
 
 # Discussion 

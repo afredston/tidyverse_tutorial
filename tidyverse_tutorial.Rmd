@@ -1,0 +1,160 @@
+---
+title: "Data Wrangling with dplyr and tidyr"
+author: "Alexa Fredston-Hermann"
+date: "February 15, 2018"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+# Notes to Users
+
+This .rmd is meant to follow along with a live tutorial. On its own, it may not be as helpful as a more complete tutorial that's designed for independent walkthrough--see links in the repository readme! 
+
+# Problem and Base R
+
+You're asked to graph emissions over time for the top 10 highest emitting countries (based on the most recent year of data). You'll find a file called `UNghgdata.csv` in the repository for this project, or you can download it by going to the [UN website](http://di.unfccc.int/time_series) and clicking "download in Excel" for the first category (greenhouse gas emissions without land use, land use change, and forestry.) If you download it yourself, be sure to visually inspect the Excel file and delete extraneous rows before saving it as a .csv and loading it into R. 
+
+```{r package setup, eval=FALSE}
+# install.packages("tidyverse")
+library(tidyverse) 
+```
+
+Inspect the data below. How is it organized? 
+```{r data import, eval=FALSE}
+rawdat <- read_csv('UNghgdata.csv')
+```
+
+The UN data is "wide" data and it is NOT tidy. Variables are stored both in rows and in columns. The data is complicated to query and manipulate. Here is just one of MANY ways to solve this problem (you can probably come up with a better one, I don't use base R much anymore!)
+
+```{r base, eval=FALSE}
+cropdat <- rawdat[1:28]
+savecols <- data.frame(cropdat$Party, cropdat$`Last Inventory Year (2015)`)
+names(savecols) <- c('Party','2015')
+savecols$rank2015 <- rank(-savecols$`2015`)
+top10df <- savecols[savecols$rank2015 <= 10,]
+basedat <- cropdat[cropdat$Party %in% top10df$Party,]
+```
+
+We've subsetted the data, although we created a lot of useless intermediates in the process. I'm not going to show you how to plot this data or work with it further (add new variables, etc.) but suffice it to say that it's extremely cumbersome to do so, given the data structure. 
+
+# Tidy Data 
+
+The base R script above is long, difficult to read, and not adaptive if you wanted to change the code for a slightly different purpose. It also creates a number of intermediate objects that are not used in the final product. 
+
+*In tidy data, each variable is stored in a column, and each observation is in a row.* Each row should be a unique observation of some combination of variables. Think about the example above: What observations are stored as columns that need to be rearranged into rows? 
+
+`dplyr` and its partner package `tidyr` (both part of the `tidyverse`) contain functions to wrangle data in a number of categories. These functions, summarized in [a handy cheatsheet](http://www.rstudio.com/wp-content/uploads/2015/02/data-wrangling-cheatsheet.pdf) that you can access from RStudio, can:
+
+* RESHAPE data, by rearranging columns and rows 
+* SUBSET rows, using criteria for the observations you want to examine
+* SUBSET columns
+* SUMMARIZE values 
+* CREATE variables 
+* GROUP variables (often followed by applying one of the tools above). 
+
+# `dplyr` and `tidyr` solutions
+
+First, this dataset has some columns with annoying names, that we aren't going to use. Let's rename one of them, and get rid of the other. 
+
+```{r select, eval=FALSE}
+
+# doing this by column number because of annoying spaces in the column names 
+dropcols <- select(rawdat, 1, 3:28)
+
+# rename ridiculous last column 
+namecols <- rename(dropcols, "2015" = `Last Inventory Year (2015)`)
+```
+
+Now that the columns are easier to reference in code, let's tidy this dataframe. 
+
+Reshaping data is simple but I find it very confusing. I usually have to look at the dplyr cheatsheet to be sure I'm getting it right! 
+
+```{r gather, eval=FALSE}
+tidydat <- gather(namecols, key="year", value="emissions", -1) # gathers all but the first column
+
+```
+
+This data is tidy now! Every column is a variable, and each row is a unique observation of some combination of those variables. 
+
+You were asked to plot emissions over time for the top 10 emitting parties in 2015. There are a bunch of ways to do this, but this approach will use a lot of useful dplyr functions.
+
+```{r top10, eval=FALSE}
+groupdat <- group_by(tidydat, year) 
+top10s <- top_n(groupdat, 10, emissions)
+top10_2015 <-filter(top10s, year==2015)
+```
+
+How else could you have gotten this list? 
+
+```{r plot, eval=FALSE}
+plotdat <- filter(ungroup(groupdat), Party %in% top10_2015$Party)
+
+ghgplot <- ggplot(plotdat, aes(x=year, y=emissions, color=Party, group=Party)) +
+  geom_point() + geom_line()
+ghgplot
+```
+
+# Pipes and Chaining
+
+This may have been more intuitive than the base R solution, but it wasn't exactly more straightforward or elegant. Look at all the useless intermediate datasets. Time to introduce the critical tool that makes dplyr functions incredibly useful: **the pipe**. 
+
+Pipes take input from the left and pass it to the right without naming an intermediate. 
+
+You don't need to use them with dplyr. For example:
+
+```{r, eval=FALSE}
+
+sample(1:1e8, 10) %>% mean()
+
+```
+
+Can we combine all of these data manipulations into a SINGLE PIPE?! (There's even a keyboard shortcut!)
+
+```{r pipe, eval=FALSE}
+pipedat <- rawdat %>% 
+  select(1, 3:28) %>% 
+  rename("2015" = `Last Inventory Year (2015)`) %>% 
+  gather(key="year", value="emissions", -1) %>% 
+  group_by(year) %>%
+  mutate(annualrank = rank(emissions)) %>% 
+  mutate(rank2015 = ) %>% ####################rank in year 2015 for that Party 
+  filter(rank2015 <= 10)
+```
+
+# Discussion 
+
+Advantages of this workflow:
+
+* Very legible
+* Easy to comment lines in and out 
+* Fast
+* No intermediates 
+* Can feed directly into ggplot 
+
+```{r ggplot, eval=FALSE}
+pipedat %>% ggplot(aes(x=year, y=emissions, color=Party)) + 
+  geom_point() 
+```
+
+Other cool features:
+
+Very easy to do joins! 
+
+```{r join, eval=FALSE}
+
+fakeGDP <- data.frame(unique(pipedat$Party), sample(1e4:1e5, length(unique(pipedat$Party)))) %>%
+  rename(Party = V1, fakeGDP = V2) ## GET THIS TO HAVE BETTER COLUMN NAMES 
+
+joindat <- pipedat %>%
+  left_join(fakeGDP, by="Party")
+
+```
+
+Note the dimensions, and that every country does indeed have the same entry for each year. Also note that if you had the fakeGDP dataframe ready, you could have made this join part of creating `pipedat`. 
+
+Questions and comments? 
+
+
+
+

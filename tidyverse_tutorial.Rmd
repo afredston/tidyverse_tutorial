@@ -112,14 +112,25 @@ sample(1:1e8, 10) %>% mean()
 Can we combine all of these data manipulations into a SINGLE PIPE?! (There's even a keyboard shortcut!)
 
 ```{r pipe, eval=FALSE}
-pipedat <- rawdat %>% 
+dat2015 <- rawdat %>% 
   select(1, 3:28) %>% 
   rename("2015" = `Last Inventory Year (2015)`) %>% 
   gather(key="year", value="emissions", -1) %>% 
   group_by(year) %>%
-  mutate(annualrank = rank(-emissions)) %>% #rank emissions in descending order
+  mutate(annualrank = rank(-emissions)) %>% 
   filter(year == 2015,
          annualrank <= 10)
+
+# split this up because I can't figure out how to chain these together! suggestions? :) 
+
+pipedat <- rawdat %>% 
+  select(1, 3:28) %>% 
+  rename("2015" = `Last Inventory Year (2015)`) %>% 
+  gather(key="year", value="emissions", -1) %>% 
+  filter(Party %in% dat2015$Party) 
+
+pipedat %>% ggplot(aes(x=year, y=emissions, color=Party, group=Party)) + 
+  geom_point() + geom_line()
 ```
 
 # Discussion 
@@ -131,11 +142,8 @@ Advantages of this workflow:
 * Fast
 * No intermediates 
 * Can feed directly into ggplot 
-
-```{r ggplot, eval=FALSE}
-pipedat %>% ggplot(aes(x=year, y=emissions, color=Party)) + 
-  geom_point() 
-```
+* Cheatsheets, keyboard shortcuts
+* What else? 
 
 Other cool features:
 
@@ -144,17 +152,18 @@ Very easy to do joins!
 ```{r join, eval=FALSE}
 
 fakeGDP <- data.frame(unique(pipedat$Party), sample(1e4:1e5, length(unique(pipedat$Party)))) %>%
-  rename(Party = V1, fakeGDP = V2) ## GET THIS TO HAVE BETTER COLUMN NAMES 
+  rename(Party = `unique.pipedat.Party.`, fakeGDP = `sample.10000.1e.05..length.unique.pipedat.Party...`)
 
 joindat <- pipedat %>%
   left_join(fakeGDP, by="Party")
-
 ```
 
-Note the dimensions, and that every country does indeed have the same entry for each year. Also note that if you had the fakeGDP dataframe ready, you could have made this join part of creating `pipedat`. 
+Note the dimensions, and that every country does indeed have the same entry for each year. Also note that if you had the `fakeGDP` dataframe ready, you could have made this join part of creating `pipedat`. 
 
-Questions and comments? 
+# Practice problems
 
+1. Compare trends over time of the top 5 and bottom 5 carbon emitters based on the first year for which data was collected. How have their emissions changed over time? 
+2. You want to prepare this data for use by a class that you are TAing. To make your grading easy, prepare for them a tidy dataset with country, emissions, and year for just four developed nations that you're interested in.  
 
 
 
